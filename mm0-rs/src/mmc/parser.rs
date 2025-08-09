@@ -947,6 +947,32 @@ impl<'a, C> Parser<'a, C> {
     self.compiler.forward_declare_proc(&name.span, name.k)?;
     if let Some(u) = header {
       let mut u = u.peekable();
+      if kind == ProcKind::Main {
+        if let Some(e) = u.peek() {
+          if e.as_atom() != Some(AtomId::COLON) {
+            return Err(ElabError::new_e(&try_get_fspan(&span, e),
+              "main function cannot have arguments"));
+          }
+        }
+        let int_ty = |s| Spanned {span: name.span.clone(), k: TypeKind::Int(s)};
+        let u_int_ty = |s| Spanned {span: name.span.clone(), k: TypeKind::UInt(s)};
+        let ptr_ty = |ty| Spanned {span: name.span.clone(), k: TypeKind::Own(Box::new(ty))};
+        let mut mk_arg = |arg_name, ty| {
+          let v = self.ba.push_fresh(Spanned {span: name.span.clone(), k: arg_name});
+          let pat = Spanned {
+            span: name.span.clone(),
+            k: TuplePatternKind::Name(false, arg_name, v)
+          };
+          let pat = Spanned {
+            span: name.span.clone(),
+            k: TuplePatternKind::Typed(Box::new(pat), Box::new(ty))
+          };
+          let arg = ArgKind::Lam(pat.k);
+          args.push(Spanned {span: pat.span, k: (ArgAttr::empty(), arg)})
+        };
+        mk_arg(intern("argc"), int_ty(Size::S32));
+        mk_arg(intern("argv"), ptr_ty(ptr_ty(u_int_ty(Size::S8))));
+      }
       while let Some((e, a)) =
         u.peek().and_then(|e| e.as_atom().filter(|&a| a != AtomId::COLON).map(|a| (e, a)))
       {
@@ -977,64 +1003,77 @@ impl<'a, C> Parser<'a, C> {
         })?
       }
       self.with_ctx(|this| {
-        let mut rets1 = vec![];
-        for e in u {
-          this.push_args_core(&span, Default::default(), e, &mut |span, mut attr, pat| {
-            if let Some(name) = &mut attr.out {
-              if *name == Symbol::UNDER {
-                if let Some(v) = pat.var().as_single_name() {*name = v.1}
-              }
-              if let Some(OutVal {used, ..}) = outmap.iter_mut().find(|p| p.name.k == *name) {
-                if std::mem::replace(used, true) {
-                  return Err(ElabError::new_e(&span, "two 'out' arguments to one 'mut'"))
-                }
-              } else {
-                return Err(ElabError::new_e(&span,
-                  "'out' does not reference a 'mut' in the function arguments"))
-              }
-            }
-            rets1.push((span, attr, pat));
-            Ok(())
-          })?
-        }
-        outs.extend(outmap.iter().filter(|val| !val.used).map(|&OutVal { input, ref name, .. }| {
-          OutArg { input, var: this.ba.push_fresh(name.clone()), name: name.clone(), ty: None }
-        }));
-        for (span, attr, pat) in rets1 {
-          if attr.mut_ {
-            return Err(ElabError::new_e(&span, "'mut' not permitted on function returns"))
+        if kind == ProcKind::Main {
+          if let Some(e) = u.peek() {
+            return Err(ElabError::new_e(&try_get_fspan(&span, e),
+              "main function cannot have return values"));
           }
-          match pat {
-            ArgKind::Let(..) =>
-              return Err(ElabError::new_e(&span, "assignment not permitted here")),
-            ArgKind::Lam(mut pat) => if let Some(name) = attr.out {
-              if !rets.is_empty() {
-                return Err(ElabError::new_e(&span,
-                  "out parameters must precede regular function returns"))
-              }
-              let mut ty = None;
-              let mut sp = span.clone();
-              outs.push(loop {
-                match pat {
-                  TuplePatternKind::Name(_, name2, var) => {
-                    let &OutVal {input, name: Spanned {ref span, ..}, ..} =
-                      outmap.iter().find(|p| p.name.k == name).expect("checked");
-                    break OutArg { input, name: Spanned { span: span.clone(), k: name2 }, var, ty }
-                  }
-                  TuplePatternKind::Typed(pat2, ty2) => {
-                    if ty.replace(ty2).is_some() {
-                      return Err(ElabError::new_e(&span,
-                        "double type ascription not permitted here"))
-                    }
-                    sp = pat2.span.clone();
-                    pat = pat2.k;
-                  }
-                  TuplePatternKind::Tuple(_) => return Err(ElabError::new_e(&sp,
-                    "tuple pattern not permitted in 'out' returns"))
+          let v = this.ba.push_fresh(Spanned {span: name.span.clone(), k: Symbol::UNDER});
+          let pat = TuplePatternKind::Name(true, Symbol::UNDER, v);
+          let pat = Spanned {span: name.span.clone(), k: pat};
+          let ty = Spanned {span: name.span.clone(), k: TypeKind::Int(Size::S32)};
+          let pat = TuplePatternKind::Typed(Box::new(pat), Box::new(ty));
+          rets.push(Spanned {span: name.span.clone(), k: pat});
+        } else {
+          let mut rets1 = vec![];
+          for e in u {
+            this.push_args_core(&span, Default::default(), e, &mut |span, mut attr, pat| {
+              if let Some(name) = &mut attr.out {
+                if *name == Symbol::UNDER {
+                  if let Some(v) = pat.var().as_single_name() {*name = v.1}
                 }
-              })
-            } else {
-              rets.push(Spanned {span, k: pat})
+                if let Some(OutVal {used, ..}) = outmap.iter_mut().find(|p| p.name.k == *name) {
+                  if std::mem::replace(used, true) {
+                    return Err(ElabError::new_e(&span, "two 'out' arguments to one 'mut'"))
+                  }
+                } else {
+                  return Err(ElabError::new_e(&span,
+                    "'out' does not reference a 'mut' in the function arguments"))
+                }
+              }
+              rets1.push((span, attr, pat));
+              Ok(())
+            })?
+          }
+          outs.extend(outmap.iter().filter(|val| !val.used).map(|&OutVal { input, ref name, .. }| {
+            OutArg { input, var: this.ba.push_fresh(name.clone()), name: name.clone(), ty: None }
+          }));
+          for (span, attr, pat) in rets1 {
+            if attr.mut_ {
+              return Err(ElabError::new_e(&span, "'mut' not permitted on function returns"))
+            }
+            match pat {
+              ArgKind::Let(..) =>
+                return Err(ElabError::new_e(&span, "assignment not permitted here")),
+              ArgKind::Lam(mut pat) => if let Some(name) = attr.out {
+                if !rets.is_empty() {
+                  return Err(ElabError::new_e(&span,
+                    "out parameters must precede regular function returns"))
+                }
+                let mut ty = None;
+                let mut sp = span.clone();
+                outs.push(loop {
+                  match pat {
+                    TuplePatternKind::Name(_, name2, var) => {
+                      let &OutVal {input, name: Spanned {ref span, ..}, ..} =
+                        outmap.iter().find(|p| p.name.k == name).expect("checked");
+                      break OutArg { input, name: Spanned { span: span.clone(), k: name2 }, var, ty }
+                    }
+                    TuplePatternKind::Typed(pat2, ty2) => {
+                      if ty.replace(ty2).is_some() {
+                        return Err(ElabError::new_e(&span,
+                          "double type ascription not permitted here"))
+                      }
+                      sp = pat2.span.clone();
+                      pat = pat2.k;
+                    }
+                    TuplePatternKind::Tuple(_) => return Err(ElabError::new_e(&sp,
+                      "tuple pattern not permitted in 'out' returns"))
+                  }
+                })
+              } else {
+                rets.push(Spanned {span, k: pat})
+              }
             }
           }
         }
