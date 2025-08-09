@@ -1804,12 +1804,37 @@ impl Initializer {
           _ => panic!("main should have at most one return")
         };
         let tgt = build.new_block(base_len);
+        let args = if body.args.is_empty() {
+          vec![]
+        } else {
+          // TODO: check signature properly
+          let mut mk_let = |span, rv, ty| {
+            let v = build.fresh_var_span(span);
+            build.push_stmt(Statement::Let(
+                LetKind::Let(v.clone(), None), true, ty, rv));
+            Operand::Move(v.k.into())
+          };
+          let u64_ty = Rc::new(TyKind::Int(IntTy::UInt(Size::S64)));
+          let argc = mk_let(body.name.span.clone(), RValue::GetArgc, u64_ty.clone());
+          let argv = mk_let(body.name.span.clone(), RValue::GetArgv,
+            Rc::new(TyKind::Ref(Lifetime::Extern,
+              Rc::new(TyKind::Array(Rc::new(TyKind::Ref(Lifetime::Extern,
+                Rc::new(TyKind::Array(Rc::new(TyKind::Int(IntTy::UInt(Size::S8))),
+                  Rc::new(ExprKind::Unit))))),
+              Rc::new(ExprKind::Var(argc.place().expect("place").local)))))));
+          let ret_var_s = build.fresh_var_span(body.name.span.clone());
+          let ret_var = ret_var_s.k;
+          build.push_stmt(Statement::Let(
+              LetKind::Let(ret_var_s, None), true, u64_ty.clone(), RValue::Use(Constant::int(IntTy::UInt(Size::S64), 0.into()).into())));
+          let ret_op = Operand::Ref(Place::local(ret_var));
+          vec![(true, argc), (true, argv), (true, ret_op)]
+        }.into_boxed_slice();
         build.cur_block().terminate(Terminator::Call {
           ctx: base_ctx,
           f: main,
           tys: Box::new([]),
           se: true,
-          args: Box::new([]), // TODO
+          args,
           reach: true,
           tgt,
           rets,

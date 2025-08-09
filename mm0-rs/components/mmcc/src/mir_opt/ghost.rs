@@ -222,7 +222,9 @@ impl Cfg {
           }
           RValue::Ghost(_) |
           RValue::Mm0(..) |
-          RValue::Typeof(_) => {}
+          RValue::Typeof(_) |
+          RValue::GetArgc |
+          RValue::GetArgv => {}
         }
       }
     }

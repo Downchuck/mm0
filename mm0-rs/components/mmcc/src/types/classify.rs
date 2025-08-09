@@ -123,6 +123,10 @@ pub enum RValue {
   Borrow(Place, Copy),
   /// A statement producing no code.
   Ghost,
+  /// A `GetArgc` statement
+  GetArgc(Copy),
+  /// A `GetArgv` statement
+  GetArgv(Copy),
 }
 
 /// A call to `add_scaled`.
@@ -510,6 +514,8 @@ mk_fold! { <'a>
         self.do_inst(it);
         self.do_copy(cl2, it);
       }
+      (&RValue::GetArgc(cl), mir::RValue::GetArgc) => self.do_copy(cl, it),
+      (&RValue::GetArgv(cl), mir::RValue::GetArgv) => { self.do_inst(it); self.do_copy(cl, it) }
       _ => unreachable!()
     }
   }

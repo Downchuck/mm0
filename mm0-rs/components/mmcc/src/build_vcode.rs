@@ -23,7 +23,8 @@ use crate::mir_opt::BitSet;
 use crate::mir_opt::storage::{Allocations, AllocId};
 use crate::types::{Idx, IdxVec, IntTy, Size, Spanned, classify as cl};
 use crate::types::vcode::{self, ArgAbi, BlockId as VBlockId,
-  ChunkVec, ConstRef, InstId, GlobalId, ProcAbi, ProcId, SpillId, VReg, VRegRename};
+  ChunkVec, ConstRef, InstId, GlobalId, ProcAbi, ProcId, SpillId, VReg, VRegRename, IsReg};
+use crate::arch::Offset;
 
 #[allow(clippy::wildcard_imports)]
 use crate::types::mir::*;
@@ -656,6 +657,26 @@ impl<'a> LowerCtx<'a> {
         };
         let (cl2, r) = self.code.emit_copy(sz, dst, temp);
         (cl::RValue::Borrow(cl1, cl2), r)
+      }
+      RValue::GetArgc => {
+        assert_eq!(sz, Size::S64);
+        let addr = AMode {
+          off: Offset::Rsp(0),
+          base: VReg::invalid(),
+          si: None,
+        };
+        let (cl, r) = self.build_memcpy(tysize, sz, dst, addr);
+        (cl::RValue::GetArgc(cl), r)
+      }
+      RValue::GetArgv => {
+        assert_eq!(sz, Size::S64);
+        let addr = AMode {
+          off: Offset::Rsp(8),
+          base: VReg::invalid(),
+          si: None,
+        };
+        let (cl, r) = self.build_memcpy(tysize, sz, dst, addr);
+        (cl::RValue::GetArgv(cl), r)
       }
     })
   }

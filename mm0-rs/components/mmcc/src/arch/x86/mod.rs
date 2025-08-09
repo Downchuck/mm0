@@ -403,6 +403,8 @@ pub enum Offset<N = u32> {
   Global(GlobalId, N),
   /// An offset into the constant pool (the .rodata section).
   Const(N),
+  /// An offset relative to `RSP`. This is like `Spill` but for arguments passed on the stack.
+  Rsp(N),
 }
 
 impl<N: Default> Default for Offset<N> {
@@ -418,6 +420,8 @@ impl<N: Zero + Debug> Debug for Offset<N> {
       Self::Global(i, n) if n.is_zero() => i.fmt(f),
       Self::Global(i, n) => write!(f, "{i:?} + {n:?}"),
       Self::Const(n) => write!(f, "const[{n:?}]"),
+      Self::Rsp(n) if n.is_zero() => write!(f, "rsp"),
+      Self::Rsp(n) => write!(f, "rsp + {n:?}"),
     }
   }
 }
@@ -441,6 +445,7 @@ impl From<Offset> for Offset<u64> {
       Offset::Spill(s, i) => Offset::Spill(s, i.into()),
       Offset::Global(g, i) => Offset::Global(g, i.into()),
       Offset::Const(i) => Offset::Const(i.into()),
+      Offset::Rsp(i) => Offset::Rsp(i.into()),
     }
   }
 }
@@ -452,6 +457,7 @@ impl TryFrom<Offset<u64>> for Offset {
       Offset::Spill(s, i) => Offset::Spill(s, u32::try_from(i)?),
       Offset::Global(g, i) => Offset::Global(g, u32::try_from(i)?),
       Offset::Const(i) => Offset::Const(u32::try_from(i)?),
+      Offset::Rsp(i) => Offset::Rsp(u32::try_from(i)?),
     })
   }
 }
@@ -464,6 +470,7 @@ impl<N: std::ops::Add<Output = N>> std::ops::Add<N> for Offset<N> {
       Offset::Spill(s, i) => Offset::Spill(s, i + n),
       Offset::Global(g, i) => Offset::Global(g, i + n),
       Offset::Const(i) => Offset::Const(i + n),
+      Offset::Rsp(i) => Offset::Rsp(i + n),
     }
   }
 }
@@ -1316,9 +1323,9 @@ pub(crate) type PAMode = AMode<PReg>;
 /// A version of `RegMem` post-register allocation.
 pub type PRegMem = RegMem<PReg>;
 
-impl PAMode {
+impl AMode<PReg> {
   pub(crate) fn base(&self) -> PReg {
-    if let Offset::Spill(..) = self.off { RSP } else { self.base }
+    if let Offset::Spill(..) | Offset::Rsp(..) = self.off { RSP } else { self.base }
   }
 }
 
@@ -1766,7 +1773,7 @@ fn layout_u32(n: u32) -> DispLayout {
 
 fn layout_offset(off: &Offset) -> DispLayout {
   match *off {
-    Offset::Real(n) => layout_u32(n),
+    Offset::Real(n) | Offset::Rsp(n) => layout_u32(n),
     Offset::Spill(..) => unreachable!(),
     _ => DispLayout::S32,
   }
@@ -1778,13 +1785,14 @@ fn layout_opc_reg(rex: &mut bool, rm: PReg) -> ModRMLayout {
 }
 
 fn layout_opc_mem(rex: &mut bool, a: &PAMode) -> ModRMLayout {
-  if a.base.is_valid() { *rex |= a.base.large() }
+  let base = a.base();
+  if base.is_valid() { *rex |= base.large() }
   if let Some(si) = a.si { *rex |= si.index.large() }
   match a {
-    _ if !a.base().is_valid() => ModRMLayout::Sib0,
-    PAMode {off, si: None, ..} if a.base().index() & 7 != 4 =>
+    _ if !base.is_valid() => ModRMLayout::Sib0,
+    PAMode {off, si: None, ..} if base.index() & 7 != 4 =>
       ModRMLayout::Disp(layout_offset(off)),
-    PAMode {off, base, ..} => match (*base, layout_offset(off)) {
+    PAMode {off, ..} => match (base, layout_offset(off)) {
       (RBP, DispLayout::S0) => ModRMLayout::SibReg(DispLayout::S8),
       (_, layout) => ModRMLayout::SibReg(layout)
     }
@@ -2039,7 +2047,7 @@ impl PInst {
 
     fn encode_offset(buf: &InstSink<'_>, off: &Offset) -> u32 {
       match *off {
-        Offset::Real(off) => off,
+    Offset::Real(off) | Offset::Rsp(off) => off,
         Offset::Spill(..) => unreachable!("removed by regalloc"),
         Offset::Global(id, n) => buf[id] + n,
         Offset::Const(n) => buf.rodata_start + n,
@@ -2068,12 +2076,12 @@ impl PInst {
         }
         (ModRMLayout::SibReg(disp), PRegMem::Mem(a)) => {
           buf.push_u8(((disp as u8) << 6) + (opc << 3) + 4);
-          buf.push_u8(encode_si(a.si, rex) + encode_reg(a.base, rex, REX_B));
+      buf.push_u8(encode_si(a.si, rex) + encode_reg(a.base(), rex, REX_B));
           let off = encode_offset(buf, &a.off);
           write_disp(disp, buf, off);
         }
         (ModRMLayout::Disp(disp), PRegMem::Mem(a)) => {
-          buf.push_u8(((disp as u8) << 6) + (opc << 3) + encode_reg(a.base, rex, REX_B));
+      buf.push_u8(((disp as u8) << 6) + (opc << 3) + encode_reg(a.base(), rex, REX_B));
           let off = encode_offset(buf, &a.off);
           write_disp(disp, buf, off);
         }
