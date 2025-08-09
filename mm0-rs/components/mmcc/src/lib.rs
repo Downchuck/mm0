@@ -300,7 +300,6 @@ mod test {
     ArgAttr, ArgKind, Block, ExprKind, ItemKind, StmtKind, TuplePatternKind, TypeKind};
   use crate::{Compiler, Idx, Symbol, intern};
   use crate::types::{Binop, Size, Spanned, VarId, hir::ProcKind, entity::IntrinsicProc};
-  use crate::types::mir::RValue;
 
   fn assert_eq_hex(test_name: &str, data: &[u8], hex: &str) {
     let mut result = String::from(hex);
@@ -588,14 +587,14 @@ mod test {
       0000 33ff 0f05 0000 0000 0000 0000 0000\
       4883 ec0b b868 0000 0040 8804 24ba 6500\
       0000 4088 5424 0141 b96c 0000 0044 884c\
-      2402 bf6c 0000 0040 887c 2403 b96f 0000\
-      0040 884c 2404 41ba 2000 0000 4488 5424\
-      05be 7700 0000 4088 7424 0641 b86f 0000\
-      0044 8844 2407 b872 0000 0040 8844 2408\
-      ba6c 0000 0040 8854 2409 41b9 6400 0000\
-      4488 4c24 0a48 8d34 24b8 0100 0000 48c7\
-      c701 0000 0048 c7c2 0b00 0000 0f05 4883\
-      c40b c300 0000 0000 0000 0000 0000 0000\
+      2402 b86c 0000 0040 8844 2403 ba6f 0000\
+      0040 8854 2404 41b9 2000 0000 4488 4c24\
+      05b8 7700 0000 4088 4424 06ba 6f00 0000\
+      4088 5424 0741 b972 0000 0044 884c 2408\
+      b86c 0000 0040 8844 2409 ba64 0000 0040\
+      8854 240a 488d 3424 b801 0000 0048 c7c7\
+      0100 0000 48c7 c20b 0000 000f 0548 83c4\
+      0bc3 0000 0000 0000 0000 0000 0000 0000\
     ");
   }
 
