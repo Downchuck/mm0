@@ -1527,6 +1527,10 @@ pub enum RValue {
   Mm0(LambdaId, Box<[Operand]>),
   /// Take the type of a variable.
   Typeof(Operand),
+  /// Get the argument count from the OS.
+  GetArgc,
+  /// Get the argument vector from the OS.
+  GetArgv,
 }
 
 impl std::fmt::Debug for RValue {
@@ -1546,6 +1550,8 @@ impl std::fmt::Debug for RValue {
       Self::Borrow(p) => write!(f, "&{p:?}"),
       Self::Mm0(l, os) => write!(f, "pure {l:?}{os:?}"),
       Self::Typeof(e) => write!(f, "typeof {e:?}"),
+      Self::GetArgc => write!(f, "argc"),
+      Self::GetArgv => write!(f, "argv"),
     }
   }
 }
@@ -1873,7 +1879,9 @@ pub(crate) trait Visitor {
       RValue::Array(args) => for o in &**args { self.visit_operand(o) }
       RValue::Ghost(_) |
       RValue::Mm0(..) |
-      RValue::Typeof(_) => {}
+      RValue::Typeof(_) |
+      RValue::GetArgc |
+      RValue::GetArgv => {}
     }
   }
 

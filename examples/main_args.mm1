@@ -1,0 +1,5 @@
+(proc main (argc: u64, argv: (ptr (ptr u8)), ret: (ptr u64)))
+(body
+  (set-ptr ret argc)
+  (return)
+)

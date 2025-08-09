@@ -300,6 +300,7 @@ mod test {
     ArgAttr, ArgKind, Block, ExprKind, ItemKind, StmtKind, TuplePatternKind, TypeKind};
   use crate::{Compiler, Idx, Symbol, intern};
   use crate::types::{Binop, Size, Spanned, VarId, hir::ProcKind, entity::IntrinsicProc};
+  use crate::types::mir::RValue;
 
   fn assert_eq_hex(test_name: &str, data: &[u8], hex: &str) {
     let mut result = String::from(hex);
@@ -412,9 +413,9 @@ mod test {
       0100 0000 0700 0000 7800 0000 0000 0000\
       7800 4000 0000 0000 0000 0000 0000 0000\
       2800 0000 0000 0000 2800 0000 0000 0000\
-      0000 2000 0000 0000 ba02 0000 00b9 0200\
-      0000 02d1 80fa 0441 0f94 c041 80f8 0075\
-      020f 0bb8 3c00 0000 33ff 0f05 0000 0000\
+      0000 2000 0000 0000 be02 0000 00ba 0200\
+      0000 4002 f240 80fe 0441 0f94 c341 80fb\
+      0075 020f 0bb8 3c00 0000 33ff 0f05 0000\
     ");
   }
 
@@ -458,11 +459,10 @@ mod test {
       0000 0000 4000 3800 0100 4000 0000 0000\
       0100 0000 0700 0000 7800 0000 0000 0000\
       7800 4000 0000 0000 0000 0000 0000 0000\
-      3800 0000 0000 0000 3800 0000 0000 0000\
+      2800 0000 0000 0000 2800 0000 0000 0000\
       0000 2000 0000 0000 e813 0000 00b8 3c00\
       0000 33ff 0f05 0000 0000 0000 0000 0000\
-      ba02 0000 00b9 0200 0000 02d1 b904 0000\
-      003a d10f 94c0 3c00 7502 0f0b c300 0000\
+      c300 0000 0000 0000 0000 0000 0000 0000\
     ");
   }
 
@@ -596,6 +596,36 @@ mod test {
       4488 4c24 0a48 8d34 24b8 0100 0000 48c7\
       c701 0000 0048 c7c2 0b00 0000 0f05 4883\
       c40b c300 0000 0000 0000 0000 0000 0000\
+    ");
+  }
+
+  #[test]
+  fn main_args_test() {
+    use crate::{LinkedCode, mir::*};
+    let names = Default::default();
+    let mut cfg = Cfg::default();
+    let bl = cfg.new_block(CtxId::ROOT, 0);
+    cfg[bl].terminate(Terminator::Exit(Constant::unit().into()));
+    // println!("before opt:\n{:#?}", cfg);
+    cfg.optimize(&[]);
+    // println!("after opt:\n{:#?}", cfg);
+    let allocs = cfg.storage(&names);
+    // println!("allocs = {:#?}", allocs);
+    let code = LinkedCode::link(&names, Default::default(), cfg, &allocs, &[]).unwrap();
+    println!("code = {code:#?}");
+    // code.write_elf(&mut std::fs::File::create("trivial").unwrap());
+    let mut out = Vec::new();
+    code.write_elf(&mut out).unwrap();
+    assert_eq_hex("trivial_ir", &out, "\
+      7f45 4c46 0201 0100 0000 0000 0000 0000\
+      0200 3e00 0100 0000 7800 4000 0000 0000\
+      4000 0000 0000 0000 0000 0000 0000 0000\
+      0000 0000 4000 3800 0100 4000 0000 0000\
+      0100 0000 0700 0000 7800 0000 0000 0000\
+      7800 4000 0000 0000 0000 0000 0000 0000\
+      1800 0000 0000 0000 1800 0000 0000 0000\
+      0000 2000 0000 0000 b83c 0000 0033 ff0f\
+      0500 0000 0000 0000 0000 0000 0000 0000\
     ");
   }
 }

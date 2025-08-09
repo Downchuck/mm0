@@ -34,5 +34,8 @@ mm0_deepsize = { path = "../mm0_deepsize", optional = true, features = [
   "num", "typed-arena", "smallvec", "bit-vec", "bit-set"] }
 mm0_deepsize_derive = { path = "../mm0_deepsize_derive", optional = true }
 
+[dev-dependencies]
+tempfile = "3.5.0"
+
 [features]
 memory = ["mm0_util/memory", "mm0_deepsize", "mm0_deepsize_derive"]

@@ -53,3 +53,11 @@ The `mm0-c` tool can be used to verify `.mmb` files. To build and run `mm0-c`:
     ```bash
     ./mm0-c path/to/file.mmb
     ```
+
+### Compilation Targets: `.mmb` vs `.elf`
+
+There are two primary compilation paths for `.mm1` files, resulting in different output types:
+
+*   **`.mmb` (Proof Verification):** Most `.mm1` files, such as `examples/set.mm1`, are proof scripts that define axioms and theorems. These are compiled into `.mmb` (Metamath Binary) files using the `mm0-rs compile` command. The `.mmb` file contains a binary representation of the proofs, which can then be formally verified by a tool like `mm0-c` against an `.mm0` specification file. This path is used to ensure the logical soundness of a set of proofs.
+
+*   **`.elf` (Executable File):** Some `.mm1` files, like `examples/hello_mmc.mm1`, are designed to produce executable programs. These files import `compiler.mm1` and use special functions (like `mmc-add` and `mmc-finish`) to construct a program. The `output` command in the `.mm1` file is used to generate the final executable code as a string, which is then written to a file. This process results in a verified ELF executable, where the compilation process itself is part of the formal proof. To run such a file, you would compile it with `mm0-rs compile` and then execute the resulting output file.
