@@ -420,6 +420,44 @@ mod test {
 
   #[test] fn two_plus_two() {
     let mut compiler = Compiler::new(());
+    let strlen_s = fresh.fresh();
+    compiler.add(
+      &Spanned::dummy(ItemKind::Proc {
+        intrinsic: Some(IntrinsicProc::Strlen),
+        kind: ProcKind::Proc,
+        name: Spanned::dummy(strlen),
+        tyargs: 0,
+        args: Box::new([
+          Spanned::dummy((ArgAttr::empty(), ArgKind::Lam(TuplePatternKind::Typed(
+            Box::new(Spanned::dummy(TuplePatternKind::Name(false, intern("s"), strlen_s))),
+            Box::new(Spanned::dummy(TypeKind::Own(Box::new(Spanned::dummy(TypeKind::UInt(Size::S8)))))),
+          )))),
+        ]),
+        outs: Box::new([]),
+        rets: Box::new([
+          Spanned::dummy(TuplePatternKind::Typed(
+            Box::new(Spanned::dummy(TuplePatternKind::Name(false, Symbol::UNDER, fresh.fresh()))),
+            Box::new(Spanned::dummy(TypeKind::UInt(Size::S64))),
+          ))
+        ]),
+        variant: None,
+        body: Block::default(),
+      }),
+      Default::default(), ()).unwrap();
+
+    let newline = intern("newline");
+    compiler.add(&Spanned::dummy(ItemKind::Const(None,
+      Spanned::dummy(TuplePatternKind::Typed(
+        Box::new(Spanned::dummy(TuplePatternKind::Name(false, newline, fresh.fresh()))),
+        Box::new(Spanned::dummy(TypeKind::Array(
+          Box::new(Spanned::dummy(TypeKind::UInt(Size::S8))),
+          Box::new(Spanned::dummy(ExprKind::Int(1.into())))))),
+      )),
+      Spanned::dummy(ExprKind::List(vec![Spanned::dummy(ExprKind::Int(10.into()))]))
+    )), Default::default(), ()).unwrap();
+
+    let s = fresh.fresh();
+    let len = fresh.fresh();
     let main = Spanned::dummy(ItemKind::Proc {
       intrinsic: None,
       kind: ProcKind::Main,
@@ -600,31 +638,145 @@ mod test {
 
   #[test]
   fn main_args_test() {
-    use crate::{LinkedCode, mir::*};
-    let names = Default::default();
-    let mut cfg = Cfg::default();
-    let bl = cfg.new_block(CtxId::ROOT, 0);
-    cfg[bl].terminate(Terminator::Exit(Constant::unit().into()));
-    // println!("before opt:\n{:#?}", cfg);
-    cfg.optimize(&[]);
-    // println!("after opt:\n{:#?}", cfg);
-    let allocs = cfg.storage(&names);
-    // println!("allocs = {:#?}", allocs);
-    let code = LinkedCode::link(&names, Default::default(), cfg, &allocs, &[]).unwrap();
-    println!("code = {code:#?}");
-    // code.write_elf(&mut std::fs::File::create("trivial").unwrap());
-    let mut out = Vec::new();
-    code.write_elf(&mut out).unwrap();
-    assert_eq_hex("trivial_ir", &out, "\
-      7f45 4c46 0201 0100 0000 0000 0000 0000\
-      0200 3e00 0100 0000 7800 4000 0000 0000\
-      4000 0000 0000 0000 0000 0000 0000 0000\
-      0000 0000 4000 3800 0100 4000 0000 0000\
-      0100 0000 0700 0000 7800 0000 0000 0000\
-      7800 4000 0000 0000 0000 0000 0000 0000\
-      1800 0000 0000 0000 1800 0000 0000 0000\
-      0000 2000 0000 0000 b83c 0000 0033 ff0f\
-      0500 0000 0000 0000 0000 0000 0000 0000\
-    ");
+    use std::io::Read;
+    let mut compiler = Compiler::new(());
+    let mut fresh = VarId::default();
+    let write = intern("write");
+    let strlen = intern("strlen");
+
+    let write_fd = fresh.fresh();
+    let write_count = fresh.fresh();
+    let write_buf = fresh.fresh();
+    compiler.add(
+      &Spanned::dummy(ItemKind::Proc {
+        intrinsic: Some(IntrinsicProc::Write),
+        kind: ProcKind::Proc,
+        name: Spanned::dummy(write),
+        tyargs: 0,
+        args: Box::new([
+          Spanned::dummy((ArgAttr::empty(), ArgKind::Lam(TuplePatternKind::Typed(
+            Box::new(Spanned::dummy(TuplePatternKind::Name(false, intern("fd"), write_fd))),
+            Box::new(Spanned::dummy(TypeKind::UInt(Size::S32))),
+          )))),
+          Spanned::dummy((ArgAttr::empty(), ArgKind::Lam(TuplePatternKind::Typed(
+            Box::new(Spanned::dummy(TuplePatternKind::Name(false, intern("count"), write_count))),
+            Box::new(Spanned::dummy(TypeKind::UInt(Size::S32))),
+          )))),
+          Spanned::dummy((ArgAttr::GHOST | ArgAttr::MUT, ArgKind::Lam(TuplePatternKind::Typed(
+            Box::new(Spanned::dummy(TuplePatternKind::Name(false, intern("buf"), write_buf))),
+            Box::new(Spanned::dummy(TypeKind::Ref(None,
+              Box::new(Spanned::dummy(TypeKind::Array(
+                Box::new(Spanned::dummy(TypeKind::UInt(Size::S8))),
+                Box::new(Spanned::dummy(ExprKind::Var(write_count))),
+              ))))))
+          )))),
+          Spanned::dummy((ArgAttr::empty(), ArgKind::Lam(TuplePatternKind::Typed(
+            Box::new(Spanned::dummy(TuplePatternKind::Name(false, intern("p"), fresh.fresh()))),
+            Box::new(Spanned::dummy(TypeKind::RefSn(
+              Box::new(Spanned::dummy(ExprKind::Var(write_buf)))
+            ))),
+          )))),
+        ]),
+        outs: Box::new([]),
+        rets: Box::new([
+          Spanned::dummy(TuplePatternKind::Typed(
+            Box::new(Spanned::dummy(TuplePatternKind::Name(false, Symbol::UNDER, fresh.fresh()))),
+            Box::new(Spanned::dummy(TypeKind::UInt(Size::S32))),
+          ))
+        ]),
+        variant: None,
+        body: Block::default()
+      }),
+      Default::default(), ()).unwrap();
+
+    let strlen_s = fresh.fresh();
+    compiler.add(
+      &Spanned::dummy(ItemKind::Proc {
+        intrinsic: Some(IntrinsicProc::Strlen),
+        kind: ProcKind::Proc,
+        name: Spanned::dummy(strlen),
+        tyargs: 0,
+        args: Box::new([
+          Spanned::dummy((ArgAttr::empty(), ArgKind::Lam(TuplePatternKind::Typed(
+            Box::new(Spanned::dummy(TuplePatternKind::Name(false, intern("s"), strlen_s))),
+            Box::new(Spanned::dummy(TypeKind::Own(Box::new(Spanned::dummy(TypeKind::UInt(Size::S8)))))),
+          )))),
+        ]),
+        outs: Box::new([]),
+        rets: Box::new([
+          Spanned::dummy(TuplePatternKind::Typed(
+            Box::new(Spanned::dummy(TuplePatternKind::Name(false, Symbol::UNDER, fresh.fresh()))),
+            Box::new(Spanned::dummy(TypeKind::UInt(Size::S64))),
+          ))
+        ]),
+        variant: None,
+        body: Block::default(),
+      }),
+      Default::default(), ()).unwrap();
+
+    let main = Spanned::dummy(ItemKind::Proc {
+      intrinsic: None,
+      kind: ProcKind::Main,
+      name: Spanned::dummy(intern("main")),
+      tyargs: 0,
+      args: Box::new([]),
+      outs: Box::new([]),
+      rets: Box::new([]),
+      variant: None,
+      body: Block {
+        stmts: vec![
+          Spanned::dummy(StmtKind::Let {
+            lhs: Spanned::dummy(TuplePatternKind::Name(false, intern("s"), s)),
+            rhs: Spanned::dummy(ExprKind::Index(
+              Box::new(Spanned::dummy(ExprKind::Var(VarId(1)))),
+              Box::new(Spanned::dummy(ExprKind::Int(1.into()))),
+            )),
+          }),
+          Spanned::dummy(StmtKind::Let {
+            lhs: Spanned::dummy(TuplePatternKind::Name(false, intern("len"), len)),
+            rhs: Spanned::dummy(ExprKind::Call {
+              f: Spanned::dummy(strlen),
+              tys: vec![],
+              args: vec![Spanned::dummy(ExprKind::Var(s))],
+              variant: None,
+            }),
+          }),
+          Spanned::dummy(StmtKind::Expr(ExprKind::Call {
+            f: Spanned::dummy(write),
+            tys: vec![],
+            args: vec![
+              Spanned::dummy(ExprKind::Int(1.into())),
+              Spanned::dummy(ExprKind::Var(len)),
+              Spanned::dummy(ExprKind::Var(s)),
+              Spanned::dummy(ExprKind::Borrow(Box::new(Spanned::dummy(ExprKind::Var(s))))),
+            ],
+            variant: None,
+          })),
+          Spanned::dummy(StmtKind::Expr(ExprKind::Call {
+            f: Spanned::dummy(write),
+            tys: vec![],
+            args: vec![
+              Spanned::dummy(ExprKind::Int(1.into())),
+              Spanned::dummy(ExprKind::Int(1.into())),
+              Spanned::dummy(ExprKind::Const(newline)),
+              Spanned::dummy(ExprKind::Borrow(Box::new(Spanned::dummy(ExprKind::Const(newline))))),
+            ],
+            variant: None,
+          })),
+        ],
+        expr: Some(Box::new(Spanned::dummy(ExprKind::Var(VarId(0))))),
+      },
+    });
+    compiler.add(&main, Default::default(), ()).unwrap();
+    let code = compiler.finish().unwrap();
+    let mut file = tempfile::Builder::new().prefix("main_args_test").tempfile().unwrap();
+    code.write_elf(&mut file).unwrap();
+    let path = file.into_temp_path();
+    use std::os::unix::fs::PermissionsExt;
+    std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o755)).unwrap();
+    let status = std::process::Command::new(&path)
+      .args(["a", "b", "c"])
+      .status().unwrap();
+    assert_eq!(status.code(), Some(4));
   }
 }

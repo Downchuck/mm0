@@ -301,6 +301,11 @@ make_prims! {
     /// intrinsic proc sys_mmap_anon(len: u64, prot: u32) -> u64;
     /// ```
     MMapAnon: "sys_mmap_anon",
+    /// Intrinsic for `strlen`.
+    /// ```text
+    /// intrinsic proc strlen(s: &CStr) -> u64;
+    /// ```
+    Strlen: "strlen",
   }
 
   /// Intrinsic global variables.
