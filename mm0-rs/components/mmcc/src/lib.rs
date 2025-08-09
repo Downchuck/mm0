@@ -420,44 +420,6 @@ mod test {
 
   #[test] fn two_plus_two() {
     let mut compiler = Compiler::new(());
-    let strlen_s = fresh.fresh();
-    compiler.add(
-      &Spanned::dummy(ItemKind::Proc {
-        intrinsic: Some(IntrinsicProc::Strlen),
-        kind: ProcKind::Proc,
-        name: Spanned::dummy(strlen),
-        tyargs: 0,
-        args: Box::new([
-          Spanned::dummy((ArgAttr::empty(), ArgKind::Lam(TuplePatternKind::Typed(
-            Box::new(Spanned::dummy(TuplePatternKind::Name(false, intern("s"), strlen_s))),
-            Box::new(Spanned::dummy(TypeKind::Own(Box::new(Spanned::dummy(TypeKind::UInt(Size::S8)))))),
-          )))),
-        ]),
-        outs: Box::new([]),
-        rets: Box::new([
-          Spanned::dummy(TuplePatternKind::Typed(
-            Box::new(Spanned::dummy(TuplePatternKind::Name(false, Symbol::UNDER, fresh.fresh()))),
-            Box::new(Spanned::dummy(TypeKind::UInt(Size::S64))),
-          ))
-        ]),
-        variant: None,
-        body: Block::default(),
-      }),
-      Default::default(), ()).unwrap();
-
-    let newline = intern("newline");
-    compiler.add(&Spanned::dummy(ItemKind::Const(None,
-      Spanned::dummy(TuplePatternKind::Typed(
-        Box::new(Spanned::dummy(TuplePatternKind::Name(false, newline, fresh.fresh()))),
-        Box::new(Spanned::dummy(TypeKind::Array(
-          Box::new(Spanned::dummy(TypeKind::UInt(Size::S8))),
-          Box::new(Spanned::dummy(ExprKind::Int(1.into())))))),
-      )),
-      Spanned::dummy(ExprKind::List(vec![Spanned::dummy(ExprKind::Int(10.into()))]))
-    )), Default::default(), ()).unwrap();
-
-    let s = fresh.fresh();
-    let len = fresh.fresh();
     let main = Spanned::dummy(ItemKind::Proc {
       intrinsic: None,
       kind: ProcKind::Main,
@@ -639,6 +601,7 @@ mod test {
   #[test]
   fn main_args_test() {
     use std::io::Read;
+    use std::os::unix::fs::PermissionsExt;
     let mut compiler = Compiler::new(());
     let mut fresh = VarId::default();
     let write = intern("write");
@@ -714,6 +677,20 @@ mod test {
       }),
       Default::default(), ()).unwrap();
 
+    let newline = intern("newline");
+    compiler.add(&Spanned::dummy(ItemKind::Const(None,
+      Spanned::dummy(TuplePatternKind::Typed(
+        Box::new(Spanned::dummy(TuplePatternKind::Name(false, newline, fresh.fresh()))),
+        Box::new(Spanned::dummy(TypeKind::Array(
+          Box::new(Spanned::dummy(TypeKind::UInt(Size::S8))),
+          Box::new(Spanned::dummy(ExprKind::Int(1.into())))))),
+      )),
+      Spanned::dummy(ExprKind::List(vec![Spanned::dummy(ExprKind::Int(10.into()))]))
+    )), Default::default(), ()).unwrap();
+
+    let i = fresh.fresh();
+    let s = fresh.fresh();
+    let len = fresh.fresh();
     let main = Spanned::dummy(ItemKind::Proc {
       intrinsic: None,
       kind: ProcKind::Main,
@@ -726,42 +703,69 @@ mod test {
       body: Block {
         stmts: vec![
           Spanned::dummy(StmtKind::Let {
-            lhs: Spanned::dummy(TuplePatternKind::Name(false, intern("s"), s)),
-            rhs: Spanned::dummy(ExprKind::Index(
-              Box::new(Spanned::dummy(ExprKind::Var(VarId(1)))),
-              Box::new(Spanned::dummy(ExprKind::Int(1.into()))),
-            )),
+            lhs: Spanned::dummy(TuplePatternKind::Name(false, intern("i"), i)),
+            rhs: Spanned::dummy(ExprKind::Int(1.into())),
           }),
-          Spanned::dummy(StmtKind::Let {
-            lhs: Spanned::dummy(TuplePatternKind::Name(false, intern("len"), len)),
-            rhs: Spanned::dummy(ExprKind::Call {
-              f: Spanned::dummy(strlen),
-              tys: vec![],
-              args: vec![Spanned::dummy(ExprKind::Var(s))],
-              variant: None,
+          Spanned::dummy(StmtKind::Expr(ExprKind::While {
+            label: fresh.fresh(),
+            muts: Box::new([i]),
+            hyp: None,
+            cond: Box::new(Spanned::dummy(ExprKind::Binop(Binop::Lt,
+              Box::new(Spanned::dummy(ExprKind::Var(i))),
+              Box::new(Spanned::dummy(ExprKind::Var(VarId(0))))))),
+            var: None,
+            body: Box::new(Block {
+              stmts: vec![
+                Spanned::dummy(StmtKind::Let {
+                  lhs: Spanned::dummy(TuplePatternKind::Name(false, intern("s"), s)),
+                  rhs: Spanned::dummy(ExprKind::Index(
+                    Box::new(Spanned::dummy(ExprKind::Var(VarId(1)))),
+                    Box::new(Spanned::dummy(ExprKind::Var(i))),
+                  )),
+                }),
+                Spanned::dummy(StmtKind::Let {
+                  lhs: Spanned::dummy(TuplePatternKind::Name(false, intern("len"), len)),
+                  rhs: Spanned::dummy(ExprKind::Call {
+                    f: Spanned::dummy(strlen),
+                    tys: vec![],
+                    args: vec![Spanned::dummy(ExprKind::Var(s))],
+                    variant: None,
+                  }),
+                }),
+                Spanned::dummy(StmtKind::Expr(ExprKind::Call {
+                  f: Spanned::dummy(write),
+                  tys: vec![],
+                  args: vec![
+                    Spanned::dummy(ExprKind::Int(1.into())),
+                    Spanned::dummy(ExprKind::Var(len)),
+                    Spanned::dummy(ExprKind::Var(s)),
+                    Spanned::dummy(ExprKind::Borrow(Box::new(Spanned::dummy(ExprKind::Var(s))))),
+                  ],
+                  variant: None,
+                })),
+                Spanned::dummy(StmtKind::Expr(ExprKind::Call {
+                  f: Spanned::dummy(write),
+                  tys: vec![],
+                  args: vec![
+                    Spanned::dummy(ExprKind::Int(1.into())),
+                    Spanned::dummy(ExprKind::Int(1.into())),
+                    Spanned::dummy(ExprKind::Const(newline)),
+                    Spanned::dummy(ExprKind::Borrow(Box::new(Spanned::dummy(ExprKind::Const(newline))))),
+                  ],
+                  variant: None,
+                })),
+                Spanned::dummy(StmtKind::Assign {
+                  lhs: Box::new(Spanned::dummy(ExprKind::Var(i))),
+                  rhs: Box::new(Spanned::dummy(ExprKind::Binop(Binop::Add,
+                    Box::new(Spanned::dummy(ExprKind::Var(i))),
+                    Box::new(Spanned::dummy(ExprKind::Int(1.into()))),
+                  ))),
+                  oldmap: Box::new([]),
+                }),
+              ],
+              expr: None,
             }),
-          }),
-          Spanned::dummy(StmtKind::Expr(ExprKind::Call {
-            f: Spanned::dummy(write),
-            tys: vec![],
-            args: vec![
-              Spanned::dummy(ExprKind::Int(1.into())),
-              Spanned::dummy(ExprKind::Var(len)),
-              Spanned::dummy(ExprKind::Var(s)),
-              Spanned::dummy(ExprKind::Borrow(Box::new(Spanned::dummy(ExprKind::Var(s))))),
-            ],
-            variant: None,
-          })),
-          Spanned::dummy(StmtKind::Expr(ExprKind::Call {
-            f: Spanned::dummy(write),
-            tys: vec![],
-            args: vec![
-              Spanned::dummy(ExprKind::Int(1.into())),
-              Spanned::dummy(ExprKind::Int(1.into())),
-              Spanned::dummy(ExprKind::Const(newline)),
-              Spanned::dummy(ExprKind::Borrow(Box::new(Spanned::dummy(ExprKind::Const(newline))))),
-            ],
-            variant: None,
+            has_break: false,
           })),
         ],
         expr: Some(Box::new(Spanned::dummy(ExprKind::Var(VarId(0))))),
@@ -772,11 +776,11 @@ mod test {
     let mut file = tempfile::Builder::new().prefix("main_args_test").tempfile().unwrap();
     code.write_elf(&mut file).unwrap();
     let path = file.into_temp_path();
-    use std::os::unix::fs::PermissionsExt;
     std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o755)).unwrap();
-    let status = std::process::Command::new(&path)
+    let output = std::process::Command::new(&path)
       .args(["a", "b", "c"])
-      .status().unwrap();
-    assert_eq!(status.code(), Some(4));
+      .output().unwrap();
+    assert_eq!(output.status.code(), Some(4));
+    assert_eq!(std::str::from_utf8(&output.stdout).unwrap(), "a\nb\nc\n");
   }
 }
