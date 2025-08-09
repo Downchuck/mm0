@@ -1,0 +1,2 @@
+(intrinsic (proc write (fd: u32) (count: u32) (ghost mut buf: (array u8 count)) (p: (&sn buf)) -> u32))
+(intrinsic (proc strlen (s: (ptr u8)) -> u64))
